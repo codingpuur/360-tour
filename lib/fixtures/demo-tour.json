@@ -1,0 +1,76 @@
+{
+  "_id": "tour_demo",
+  "slug": "demo",
+  "title": "Demo Tour",
+  "description": "A sample 360° virtual tour for testing the viewer.",
+  "coverImage": "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=1200",
+  "startSceneId": "scene_1",
+  "isPublished": true,
+  "settings": {
+    "autoRotate": false,
+    "showCompass": true,
+    "allowEmbed": true
+  },
+  "createdAt": "2026-06-07T00:00:00.000Z",
+  "updatedAt": "2026-06-07T00:00:00.000Z",
+  "scenes": [
+    {
+      "_id": "scene_1",
+      "tourId": "tour_demo",
+      "name": "Living Room",
+      "panorama": "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=4096",
+      "preview": "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=1024",
+      "initialView": { "lon": 0, "lat": 0, "fov": 75 },
+      "order": 1,
+      "hotspots": [
+        {
+          "_id": "hs_1",
+          "sceneId": "scene_1",
+          "type": "navigation",
+          "position": { "lon": 45, "lat": -5 },
+          "label": "Enter Kitchen",
+          "targetSceneId": "scene_2",
+          "targetView": { "lon": 180, "lat": 0 },
+          "icon": "arrow",
+          "style": { "color": "#60a5fa", "scale": 1.0 }
+        },
+        {
+          "_id": "hs_2",
+          "sceneId": "scene_1",
+          "type": "info",
+          "position": { "lon": -30, "lat": 10 },
+          "label": "Oak Table",
+          "icon": "info",
+          "content": {
+            "title": "Hand-carved Oak Table",
+            "text": "Sourced locally, crafted in the 1920s. A centrepiece of the living room.",
+            "link": "https://example.com/table"
+          },
+          "style": { "color": "#34d399", "scale": 1.0 }
+        }
+      ]
+    },
+    {
+      "_id": "scene_2",
+      "tourId": "tour_demo",
+      "name": "Kitchen",
+      "panorama": "https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=4096",
+      "preview": "https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=1024",
+      "initialView": { "lon": 0, "lat": 0, "fov": 75 },
+      "order": 2,
+      "hotspots": [
+        {
+          "_id": "hs_3",
+          "sceneId": "scene_2",
+          "type": "navigation",
+          "position": { "lon": -135, "lat": -5 },
+          "label": "Back to Living Room",
+          "targetSceneId": "scene_1",
+          "targetView": { "lon": 0, "lat": 0 },
+          "icon": "arrow",
+          "style": { "color": "#60a5fa", "scale": 1.0 }
+        }
+      ]
+    }
+  ]
+}
