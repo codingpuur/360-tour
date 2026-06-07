@@ -24,7 +24,7 @@ export async function PUT(request: Request, { params }: Ctx) {
 
   await connectDB()
   const body    = await request.json()
-  const updated = await Tour.findByIdAndUpdate(params.id, body, { new: true }).lean()
+  const updated = await Tour.findByIdAndUpdate(params.id, body, { returnDocument: 'after', strict: false }).lean()
   if (!updated) return NextResponse.json({ error: 'Not found' }, { status: 404 })
   return NextResponse.json(updated)
 }

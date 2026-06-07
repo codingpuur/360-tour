@@ -45,7 +45,7 @@ export function EditorClient({ tour }: Props) {
     await fetch(`/api/tours/${tour._id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ $set: { 'settings.transition': type } }),
+      body: JSON.stringify({ settings: { ...(storeTour?.settings ?? tour.settings), transition: type } }),
     })
     setSavingTransition(false)
   }
