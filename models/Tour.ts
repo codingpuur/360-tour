@@ -15,6 +15,7 @@ export interface ITour extends Document {
     autoRotate:  boolean
     showCompass: boolean
     allowEmbed:  boolean
+    transition:  string
   }
   createdAt: Date
   updatedAt: Date
@@ -42,6 +43,7 @@ const TourSchema = new Schema<ITour>(
       autoRotate:  { type: Boolean, default: false },
       showCompass: { type: Boolean, default: true  },
       allowEmbed:  { type: Boolean, default: true  },
+      transition:  { type: String,  default: 'fade' },
     },
   },
   { timestamps: true }

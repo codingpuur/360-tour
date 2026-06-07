@@ -36,6 +36,8 @@ export interface SceneDoc {
   hotspots: HotspotDoc[]
 }
 
+export type TransitionType = 'fade' | 'fade-white' | 'zoom' | 'blur' | 'instant' | 'crossfade'
+
 export interface TourDoc {
   _id: string
   slug: string
@@ -52,6 +54,7 @@ export interface TourDoc {
     autoRotate: boolean
     showCompass: boolean
     allowEmbed: boolean
+    transition: TransitionType
   }
   scenes: SceneDoc[]
   createdAt: string

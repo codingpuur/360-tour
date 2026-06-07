@@ -56,7 +56,12 @@ async function fetchEditorTour(tourId: string): Promise<TourDoc | null> {
       })),
     } : undefined,
     isPublished:  tour.isPublished,
-    settings:     tour.settings,
+    settings: {
+      autoRotate:  tour.settings?.autoRotate  ?? false,
+      showCompass: tour.settings?.showCompass ?? true,
+      allowEmbed:  tour.settings?.allowEmbed  ?? true,
+      transition:  (tour.settings?.transition ?? 'fade') as import('@/types').TransitionType,
+    },
     scenes:       scenesWithHotspots,
     createdAt:    tour.createdAt.toISOString(),
     updatedAt:    tour.updatedAt.toISOString(),

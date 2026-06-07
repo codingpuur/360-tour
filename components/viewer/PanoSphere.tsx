@@ -10,31 +10,61 @@ import type { SceneDoc, HotspotDoc, LonLat } from '@/types'
 
 interface PanoSphereProps {
   scene: SceneDoc
+  nextScene?: SceneDoc | null
+  onCrossfadeDone?: () => void
   onHotspotClick: (hotspot: HotspotDoc) => void
   onSphereClick?: (lonLat: LonLat) => void
   editorMode?: boolean
 }
 
-const SPHERE_RADIUS = 500
-const DRAG_THRESHOLD = 5
-const MIN_FOV = 40
-const MAX_FOV = 110
-const DRAG_SPEED = 0.3
+const SPHERE_RADIUS   = 500
+const DRAG_THRESHOLD  = 5
+const MIN_FOV         = 40
+const MAX_FOV         = 110
+const DRAG_SPEED      = 0.3
+const CROSSFADE_SPEED = 1.8  // progress units per second ≈ 0.55s duration
+const FOV_DIP_DEGREES = 8    // how much FOV narrows at crossfade midpoint
 
-export function PanoSphere({ scene, onHotspotClick, onSphereClick, editorMode = false }: PanoSphereProps) {
+export function PanoSphere({
+  scene,
+  nextScene,
+  onCrossfadeDone,
+  onHotspotClick,
+  onSphereClick,
+  editorMode = false,
+}: PanoSphereProps) {
   const { camera, gl } = useThree()
 
+  // Primary sphere (current scene)
   const sphereRef   = useRef<THREE.Mesh>(null)
   const materialRef = useRef<THREE.MeshBasicMaterial>(null)
 
+  // Secondary sphere (crossfade target)
+  const secMeshRef = useRef<THREE.Mesh>(null)
+  const secMatRef  = useRef<THREE.MeshBasicMaterial>(null)
+
+  // Camera view
   const lonRef = useRef(scene.initialView.lon)
   const latRef = useRef(scene.initialView.lat)
   const fovRef = useRef(scene.initialView.fov)
 
+  // Drag state
   const isDragging  = useRef(false)
   const pointerDown = useRef<{ x: number; y: number } | null>(null)
   const lastMouse   = useRef({ x: 0, y: 0 })
 
+  // Crossfade animation state
+  const cfProgress = useRef(0)
+  const cfActive   = useRef(false)
+  // ID of next scene currently animating, kept in ref so useFrame can read without closure
+  const nextSceneIdRef = useRef<string>('')
+  // After crossfade completes, skip re-loading this scene (texture already in secondary sphere)
+  const skipLoadIdRef = useRef<string>('')
+  // Stable ref to callback so useFrame doesn't go stale
+  const onCrossfadeDoneRef = useRef(onCrossfadeDone)
+  useEffect(() => { onCrossfadeDoneRef.current = onCrossfadeDone }, [onCrossfadeDone])
+
+  // ── Load primary scene texture ─────────────────────────────────────────────
   useEffect(() => {
     let cancelled = false
 
@@ -42,9 +72,22 @@ export function PanoSphere({ scene, onHotspotClick, onSphereClick, editorMode = 
     latRef.current = scene.initialView.lat
     fovRef.current = scene.initialView.fov
 
+    // Crossfade just finished: secondary sphere already has this texture — transfer it
+    if (skipLoadIdRef.current === scene._id && secMatRef.current?.map && materialRef.current) {
+      const tex = secMatRef.current.map
+      if (materialRef.current.map) materialRef.current.map.dispose()
+      materialRef.current.map = tex
+      materialRef.current.needsUpdate = true
+      secMatRef.current.map = null
+      secMatRef.current.opacity = 0
+      secMatRef.current.needsUpdate = true
+      skipLoadIdRef.current = ''
+      return
+    }
+    skipLoadIdRef.current = ''
+
     const loader = new THREE.TextureLoader()
     const urls = [scene.preview, scene.panorama].filter(url => !!url)
-
     if (urls.length === 0) return
 
     let i = 0
@@ -55,16 +98,7 @@ export function PanoSphere({ scene, onHotspotClick, onSphereClick, editorMode = 
         url,
         (tex) => {
           if (cancelled) { tex.dispose(); return }
-          tex.colorSpace = THREE.SRGBColorSpace
-          // BackSide sphere: texture appears mirrored horizontally without this fix
-          tex.repeat.set(-1, 1)
-          tex.offset.set(1, 0)
-          tex.wrapS = THREE.RepeatWrapping
-          if (materialRef.current) {
-            if (materialRef.current.map) materialRef.current.map.dispose()
-            materialRef.current.map = tex
-            materialRef.current.needsUpdate = true
-          }
+          applyPanoramaTexture(tex, materialRef.current)
           loadNext()
         },
         undefined,
@@ -75,19 +109,92 @@ export function PanoSphere({ scene, onHotspotClick, onSphereClick, editorMode = 
       )
     }
     loadNext()
-
     return () => { cancelled = true }
   }, [scene._id, scene.panorama, scene.preview])
 
-  useFrame(() => {
+  // ── Load secondary (crossfade target) scene texture ───────────────────────
+  useEffect(() => {
+    if (!nextScene) {
+      cfProgress.current     = 0
+      cfActive.current       = false
+      nextSceneIdRef.current = ''
+      if (secMatRef.current) {
+        secMatRef.current.opacity = 0
+        secMatRef.current.needsUpdate = true
+      }
+      return
+    }
+
+    cfProgress.current     = 0
+    cfActive.current       = false   // wait for texture before animating
+    nextSceneIdRef.current = nextScene._id
+
+    const loader = new THREE.TextureLoader()
+    const urls   = [nextScene.preview, nextScene.panorama].filter(Boolean) as string[]
+    let i = 0
+    let cancelled  = false
+    let animStarted = false
+
+    function loadNext() {
+      if (cancelled || i >= urls.length) return
+      const url = urls[i++]
+      loader.load(
+        url,
+        (tex) => {
+          if (cancelled) { tex.dispose(); return }
+          applyPanoramaTexture(tex, secMatRef.current)
+          // Start crossfade only once the first (preview) texture is in the secondary sphere
+          if (!animStarted) {
+            animStarted      = true
+            cfActive.current = true
+          }
+          loadNext()
+        },
+        undefined,
+        (err) => {
+          console.error('[PanoSphere crossfade] texture load failed:', url, err)
+          // If preview fails, try to start animation anyway on full-res load
+          loadNext()
+        }
+      )
+    }
+    loadNext()
+    return () => { cancelled = true }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nextScene?._id])
+
+  // ── Per-frame: camera rotation + crossfade animation ──────────────────────
+  useFrame((_, delta) => {
     latRef.current = Math.max(-85, Math.min(85, latRef.current))
     camera.rotation.copy(lonLatToEuler(lonRef.current, latRef.current))
+
     if (camera instanceof THREE.PerspectiveCamera) {
-      camera.fov = fovRef.current
+      if (cfActive.current && nextScene) {
+        cfProgress.current = Math.min(cfProgress.current + delta * CROSSFADE_SPEED, 1)
+
+        if (secMatRef.current) {
+          secMatRef.current.opacity = cfProgress.current
+          secMatRef.current.needsUpdate = true
+        }
+
+        // FOV dip: sine curve peaks at midpoint for subtle zoom feel
+        const fovDip = Math.sin(cfProgress.current * Math.PI) * FOV_DIP_DEGREES
+        camera.fov = fovRef.current - fovDip
+
+        if (cfProgress.current >= 1) {
+          cfActive.current       = false
+          skipLoadIdRef.current  = nextSceneIdRef.current
+          nextSceneIdRef.current = ''
+          onCrossfadeDoneRef.current?.()
+        }
+      } else {
+        camera.fov = fovRef.current
+      }
       camera.updateProjectionMatrix()
     }
   })
 
+  // ── Pointer handlers ───────────────────────────────────────────────────────
   const handlePointerDown = useCallback((e: PointerEvent) => {
     if (e.button !== 0) return
     isDragging.current  = false
@@ -141,18 +248,40 @@ export function PanoSphere({ scene, onHotspotClick, onSphereClick, editorMode = 
   return (
     <>
       {/*
-        BackSide renders the sphere's inner surface (no scale flip needed).
-        Three.js r141+ removed automatic winding-order compensation for negative scale,
-        so the old scale.x=-1 + FrontSide approach broke. BackSide is the correct fix.
-        Texture is horizontally flipped via repeat.x=-1 / offset.x=1 to cancel the
-        left-right mirror that BackSide introduces.
+        Primary sphere: current scene. Always fully opaque.
+        BackSide renders the inner surface so the camera (at origin) sees the panorama.
+        texture.repeat.x=-1 / offset.x=1 corrects the horizontal mirror BackSide introduces.
       */}
-      <mesh ref={sphereRef}>
+      <mesh ref={sphereRef} renderOrder={1}>
         <sphereGeometry args={[SPHERE_RADIUS, 60, 30]} />
-        <meshBasicMaterial ref={materialRef} side={THREE.BackSide} />
+        <meshBasicMaterial ref={materialRef} side={THREE.BackSide} depthWrite={false} />
+      </mesh>
+
+      {/*
+        Secondary sphere: crossfade target. Slightly smaller radius so it wins depth against
+        the primary. Opacity animates 0→1 during crossfade, covering the primary gradually.
+      */}
+      <mesh ref={secMeshRef} renderOrder={2}>
+        <sphereGeometry args={[SPHERE_RADIUS - 1, 60, 30]} />
+        <meshBasicMaterial ref={secMatRef} side={THREE.BackSide} depthWrite={false} transparent opacity={0} />
       </mesh>
 
       <Hotspot hotspots={scene.hotspots} onHotspotClick={onHotspotClick} />
     </>
   )
+}
+
+// ── Shared texture setup helper ────────────────────────────────────────────────
+function applyPanoramaTexture(
+  tex: THREE.Texture,
+  mat: THREE.MeshBasicMaterial | null
+) {
+  if (!mat) return
+  tex.colorSpace = THREE.SRGBColorSpace
+  tex.repeat.set(-1, 1)
+  tex.offset.set(1, 0)
+  tex.wrapS = THREE.RepeatWrapping
+  if (mat.map) mat.map.dispose()
+  mat.map = tex
+  mat.needsUpdate = true
 }
