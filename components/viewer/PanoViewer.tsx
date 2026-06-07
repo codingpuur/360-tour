@@ -6,6 +6,7 @@ import { PanoSphere } from './PanoSphere'
 import { SceneRail } from './SceneRail'
 import { Floorplan } from './Floorplan'
 import { InfoPopup } from './InfoPopup'
+import { HoverCard } from './HoverCard'
 import type { TourDoc, SceneDoc, HotspotDoc, TransitionType } from '@/types'
 
 interface PanoViewerProps {
@@ -52,6 +53,8 @@ export function PanoViewer({ tour, initialSceneId }: PanoViewerProps) {
   const [fadeState,      setFadeState]       = useState<FadeState>('visible')
   const [crossfadeScene, setCrossfadeScene]  = useState<SceneDoc | null>(null)
   const [activePopup,    setActivePopup]     = useState<HotspotDoc | null>(null)
+  const [hoveredHotspot, setHoveredHotspot]  = useState<HotspotDoc | null>(null)
+  const [hoverPos,       setHoverPos]        = useState({ x: 0, y: 0 })
 
   const nextSceneRef    = useRef<SceneDoc | null>(null)
   const isCrossfadeRef  = useRef(false)
@@ -102,9 +105,20 @@ export function PanoViewer({ tour, initialSceneId }: PanoViewerProps) {
     if (hotspot.type === 'navigation' && hotspot.targetSceneId) {
       goToScene(hotspot.targetSceneId)
     } else if (hotspot.type === 'info') {
+      setHoveredHotspot(null)
       setActivePopup(hotspot)
     }
   }, [goToScene])
+
+  const handleHoverEnter = useCallback((hotspot: HotspotDoc, x: number, y: number) => {
+    if (hotspot.type !== 'info') return
+    setHoveredHotspot(hotspot)
+    setHoverPos({ x, y })
+  }, [])
+
+  const handleHoverLeave = useCallback(() => {
+    setHoveredHotspot(null)
+  }, [])
 
   // CSS wrapper classes (only relevant for non-crossfade transitions)
   const stateClasses = transitionKey === 'crossfade'
@@ -134,6 +148,8 @@ export function PanoViewer({ tour, initialSceneId }: PanoViewerProps) {
             nextScene={transitionKey === 'crossfade' ? crossfadeScene : null}
             onCrossfadeDone={handleCrossfadeDone}
             onHotspotClick={handleHotspotClick}
+            onHoverEnter={handleHoverEnter}
+            onHoverLeave={handleHoverLeave}
           />
         </Canvas>
       </div>
@@ -151,6 +167,10 @@ export function PanoViewer({ tour, initialSceneId }: PanoViewerProps) {
         currentSceneId={currentScene._id}
         onSelect={goToScene}
       />
+
+      {hoveredHotspot && !activePopup && (
+        <HoverCard hotspot={hoveredHotspot} x={hoverPos.x} y={hoverPos.y} />
+      )}
 
       {activePopup && (
         <InfoPopup hotspot={activePopup} onClose={() => setActivePopup(null)} />

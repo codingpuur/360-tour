@@ -14,6 +14,8 @@ interface PanoSphereProps {
   onCrossfadeDone?: () => void
   onHotspotClick: (hotspot: HotspotDoc) => void
   onSphereClick?: (lonLat: LonLat) => void
+  onHoverEnter?: (hotspot: HotspotDoc, x: number, y: number) => void
+  onHoverLeave?: () => void
   editorMode?: boolean
 }
 
@@ -31,6 +33,8 @@ export function PanoSphere({
   onCrossfadeDone,
   onHotspotClick,
   onSphereClick,
+  onHoverEnter,
+  onHoverLeave,
   editorMode = false,
 }: PanoSphereProps) {
   const { camera, gl } = useThree()
@@ -266,7 +270,12 @@ export function PanoSphere({
         <meshBasicMaterial ref={secMatRef} side={THREE.BackSide} depthWrite={false} transparent opacity={0} />
       </mesh>
 
-      <Hotspot hotspots={scene.hotspots} onHotspotClick={onHotspotClick} />
+      <Hotspot
+        hotspots={scene.hotspots}
+        onHotspotClick={onHotspotClick}
+        onHoverEnter={onHoverEnter}
+        onHoverLeave={onHoverLeave}
+      />
     </>
   )
 }

@@ -10,6 +10,8 @@ interface HotspotSpriteProps {
   hotspot: HotspotDoc
   onClick: (hotspot: HotspotDoc) => void
   onPointerDown?: (hotspot: HotspotDoc, event: THREE.Event) => void
+  onHoverEnter?: (hotspot: HotspotDoc, x: number, y: number) => void
+  onHoverLeave?: () => void
 }
 
 const loader        = new THREE.TextureLoader()
@@ -44,7 +46,7 @@ function getSpriteColor(hotspot: HotspotDoc): string {
   return '#ffffff'
 }
 
-export function HotspotSprite({ hotspot, onClick, onPointerDown }: HotspotSpriteProps) {
+export function HotspotSprite({ hotspot, onClick, onPointerDown, onHoverEnter, onHoverLeave }: HotspotSpriteProps) {
   const baseSpriteRef    = useRef<THREE.Sprite>(null)
   const baseMatRef       = useRef<THREE.SpriteMaterial>(null)
   const chevronSpriteRef = useRef<THREE.Sprite>(null)
@@ -124,6 +126,12 @@ export function HotspotSprite({ hotspot, onClick, onPointerDown }: HotspotSprite
         userData={{ hotspotId: hotspot._id }}
         onClick={(e) => { e.stopPropagation(); onClick(hotspot) }}
         onPointerDown={(e) => { e.stopPropagation(); onPointerDown?.(hotspot, e) }}
+        onPointerEnter={(e) => {
+          e.stopPropagation()
+          const ne = e.nativeEvent as PointerEvent
+          onHoverEnter?.(hotspot, ne.clientX, ne.clientY)
+        }}
+        onPointerLeave={(e) => { e.stopPropagation(); onHoverLeave?.() }}
       >
         <spriteMaterial ref={baseMatRef} transparent depthWrite={false} color={getSpriteColor(hotspot)} sizeAttenuation />
       </sprite>

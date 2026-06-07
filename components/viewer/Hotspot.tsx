@@ -8,9 +8,11 @@ interface HotspotProps {
   hotspots: HotspotDoc[]
   onHotspotClick: (hotspot: HotspotDoc) => void
   onHotspotPointerDown?: (hotspot: HotspotDoc, event: THREE.Event) => void
+  onHoverEnter?: (hotspot: HotspotDoc, x: number, y: number) => void
+  onHoverLeave?: () => void
 }
 
-export function Hotspot({ hotspots, onHotspotClick, onHotspotPointerDown }: HotspotProps) {
+export function Hotspot({ hotspots, onHotspotClick, onHotspotPointerDown, onHoverEnter, onHoverLeave }: HotspotProps) {
   return (
     <>
       {hotspots.map((h) => (
@@ -19,6 +21,8 @@ export function Hotspot({ hotspots, onHotspotClick, onHotspotPointerDown }: Hots
           hotspot={h}
           onClick={onHotspotClick}
           onPointerDown={onHotspotPointerDown}
+          onHoverEnter={onHoverEnter}
+          onHoverLeave={onHoverLeave}
         />
       ))}
     </>
