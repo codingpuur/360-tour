@@ -24,6 +24,19 @@ export interface IHotspot extends Document {
   }
 }
 
+// Separate schema needed because the subdocument has a field literally named "type"
+// which conflicts with Mongoose's type-specifier syntax.
+// Using Schema class makes Mongoose treat it as a subdocument, not a String field.
+const SensorSchema = new Schema(
+  {
+    type:   { type: String },
+    value:  { type: String },
+    unit:   { type: String },
+    status: { type: String },
+  },
+  { _id: false }
+)
+
 const HotspotSchema = new Schema<IHotspot>(
   {
     sceneId: { type: Schema.Types.ObjectId, ref: 'Scene', required: true, index: true },
@@ -42,14 +55,9 @@ const HotspotSchema = new Schema<IHotspot>(
       video: String,
       link:  String,
     },
-    icon:  { type: String, default: 'arrow' },
-    style: { color: String, scale: Number },
-    sensor: {
-      type:   String,
-      value:  String,
-      unit:   String,
-      status: String,
-    },
+    icon:   { type: String, default: 'arrow' },
+    style:  { color: String, scale: Number },
+    sensor: { type: SensorSchema },
   },
   { timestamps: true }
 )
