@@ -1,3 +1,13 @@
+export type SensorType   = 'temperature' | 'vibration' | 'humidity' | 'pressure' | 'airquality' | 'power'
+export type SensorStatus = 'normal' | 'warn' | 'danger'
+
+export interface SensorData {
+  type:   SensorType
+  value?: string
+  unit?:  string
+  status?: SensorStatus
+}
+
 export interface LonLat {
   lon: number
   lat: number
@@ -23,6 +33,7 @@ export interface HotspotDoc {
     color?: string
     scale?: number
   }
+  sensor?: SensorData
 }
 
 export interface SceneDoc {

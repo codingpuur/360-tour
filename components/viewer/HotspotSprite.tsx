@@ -4,7 +4,7 @@ import { useRef, useEffect } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { lonLatToVector3 } from '@/lib/three/lonlat'
-import type { HotspotDoc } from '@/types'
+import type { HotspotDoc, SensorType, SensorStatus } from '@/types'
 
 interface HotspotSpriteProps {
   hotspot: HotspotDoc
@@ -13,11 +13,36 @@ interface HotspotSpriteProps {
 }
 
 const loader        = new THREE.TextureLoader()
-const NAV_IMAGE     = '/hotspot.png'   // base marker for navigation
-const INFO_IMAGE    = '/point.png'     // dot for info hotspots
-const CHEVRON_IMAGE = '/chevron1.png'  // rotating direction arrow (nav only)
+const NAV_IMAGE     = '/hotspot.png'
+const INFO_IMAGE    = '/point.png'
+const CHEVRON_IMAGE = '/chevron1.png'
 
 const _screenPos = new THREE.Vector3()
+
+// Sensor type base colors (shown when no status is set)
+const SENSOR_TYPE_COLORS: Record<SensorType, string> = {
+  temperature: '#f97316',  // orange
+  vibration:   '#a855f7',  // purple
+  humidity:    '#06b6d4',  // cyan
+  pressure:    '#22c55e',  // green
+  airquality:  '#84cc16',  // lime
+  power:       '#eab308',  // yellow
+}
+
+// Status colors override sensor type color
+const STATUS_COLORS: Record<SensorStatus, string> = {
+  normal: '#22c55e',  // green
+  warn:   '#f59e0b',  // amber
+  danger: '#ef4444',  // red
+}
+
+function getSpriteColor(hotspot: HotspotDoc): string {
+  if (hotspot.type === 'info' && hotspot.sensor?.type) {
+    if (hotspot.sensor.status) return STATUS_COLORS[hotspot.sensor.status] ?? '#ffffff'
+    return SENSOR_TYPE_COLORS[hotspot.sensor.type] ?? '#ffffff'
+  }
+  return '#ffffff'
+}
 
 export function HotspotSprite({ hotspot, onClick, onPointerDown }: HotspotSpriteProps) {
   const baseSpriteRef    = useRef<THREE.Sprite>(null)
@@ -26,11 +51,11 @@ export function HotspotSprite({ hotspot, onClick, onPointerDown }: HotspotSprite
   const chevronMatRef    = useRef<THREE.SpriteMaterial>(null)
   const bobOffset        = useRef(Math.random() * Math.PI * 2)
 
-  const position = lonLatToVector3(hotspot.position.lon, hotspot.position.lat, 490)
+  const position     = lonLatToVector3(hotspot.position.lon, hotspot.position.lat, 490)
   const baseScale    = (hotspot.style?.scale ?? 1.0) * 40
-  const chevronScale = (hotspot.style?.scale ?? 1.0) * 55  // slightly larger
+  const chevronScale = (hotspot.style?.scale ?? 1.0) * 55
 
-  // Load base image (hotspot.png for nav, point.png for info)
+  // Load base PNG
   useEffect(() => {
     if (!baseMatRef.current) return
     const url = hotspot.type === 'navigation' ? NAV_IMAGE : INFO_IMAGE
@@ -41,7 +66,15 @@ export function HotspotSprite({ hotspot, onClick, onPointerDown }: HotspotSprite
     })
   }, [hotspot.type])
 
-  // Load chevron image (navigation only)
+  // Apply sensor/status color tint to info hotspot sprite
+  useEffect(() => {
+    if (!baseMatRef.current) return
+    baseMatRef.current.color.set(getSpriteColor(hotspot))
+    baseMatRef.current.needsUpdate = true
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hotspot.type, hotspot.sensor?.type, hotspot.sensor?.status])
+
+  // Load chevron (navigation only)
   useEffect(() => {
     if (!chevronMatRef.current || hotspot.type !== 'navigation') return
     loader.load(CHEVRON_IMAGE, (tex) => {
@@ -54,12 +87,17 @@ export function HotspotSprite({ hotspot, onClick, onPointerDown }: HotspotSprite
   useFrame(({ camera, clock }) => {
     if (!baseSpriteRef.current) return
 
-    // Bob animation
     const bobY = hotspot.type === 'navigation'
       ? position.y + Math.sin(clock.elapsedTime * 2 + bobOffset.current) * 4
       : position.y
 
     baseSpriteRef.current.position.y = bobY
+
+    // Danger sensors pulse (scale in/out) to draw attention
+    if (hotspot.sensor?.status === 'danger') {
+      const pulse = 1 + Math.sin(clock.elapsedTime * 6) * 0.15
+      baseSpriteRef.current.scale.setScalar(baseScale * pulse)
+    }
 
     if (hotspot.type === 'navigation' && chevronSpriteRef.current && chevronMatRef.current) {
       chevronSpriteRef.current.position.y = bobY
@@ -67,25 +105,18 @@ export function HotspotSprite({ hotspot, onClick, onPointerDown }: HotspotSprite
       _screenPos.set(position.x, position.y, position.z)
       _screenPos.project(camera)
 
-      // Hotspot is visible on screen when:
-      //   z <= 1  → in front of camera (not behind)
-      //   |x| <= 1 && |y| <= 1 → within viewport bounds
       const onScreen =
         _screenPos.z <= 1 &&
         Math.abs(_screenPos.x) <= 1 &&
         Math.abs(_screenPos.y) <= 1
 
-      // Show chevron ONLY when hotspot is off-screen (user can't see it)
       chevronSpriteRef.current.visible = !onScreen
-
-      // Rotate to point towards hotspot direction
-      chevronMatRef.current.rotation = Math.atan2(_screenPos.x, _screenPos.y)
+      chevronMatRef.current.rotation   = Math.atan2(_screenPos.x, _screenPos.y)
     }
   })
 
   return (
     <>
-      {/* Base marker sprite — hotspot.png (nav) or point.png (info) */}
       <sprite
         ref={baseSpriteRef}
         position={[position.x, position.y, position.z]}
@@ -94,10 +125,9 @@ export function HotspotSprite({ hotspot, onClick, onPointerDown }: HotspotSprite
         onClick={(e) => { e.stopPropagation(); onClick(hotspot) }}
         onPointerDown={(e) => { e.stopPropagation(); onPointerDown?.(hotspot, e) }}
       >
-        <spriteMaterial ref={baseMatRef} transparent depthWrite={false} color="#ffffff" sizeAttenuation />
+        <spriteMaterial ref={baseMatRef} transparent depthWrite={false} color={getSpriteColor(hotspot)} sizeAttenuation />
       </sprite>
 
-      {/* Chevron sprite — navigation only, rotates to show direction */}
       {hotspot.type === 'navigation' && (
         <sprite
           ref={chevronSpriteRef}

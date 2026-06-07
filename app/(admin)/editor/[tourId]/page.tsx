@@ -37,6 +37,7 @@ async function fetchEditorTour(tourId: string): Promise<TourDoc | null> {
         content:      h.content,
         icon:         (h.icon as 'arrow' | 'dot' | 'ring' | 'info' | 'custom'),
         style:        h.style,
+        sensor:       h.sensor as import('@/types').SensorData | undefined,
       })),
   }))
 

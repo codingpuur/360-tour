@@ -16,6 +16,12 @@ export interface IHotspot extends Document {
   }
   icon:   string
   style?: { color?: string; scale?: number }
+  sensor?: {
+    type:    string
+    value?:  string
+    unit?:   string
+    status?: string
+  }
 }
 
 const HotspotSchema = new Schema<IHotspot>(
@@ -38,6 +44,12 @@ const HotspotSchema = new Schema<IHotspot>(
     },
     icon:  { type: String, default: 'arrow' },
     style: { color: String, scale: Number },
+    sensor: {
+      type:   String,
+      value:  String,
+      unit:   String,
+      status: String,
+    },
   },
   { timestamps: true }
 )
