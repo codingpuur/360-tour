@@ -25,7 +25,10 @@ const STATUS_OPTIONS: { value: SensorStatus; label: string; color: string }[] = 
 ]
 
 export function HotspotForm({ onClose }: HotspotFormProps) {
-  const { pendingHotspot, tour, addHotspot, setPendingHotspot, setMode } = useEditorStore()
+  const { pendingHotspot, tour, addHotspot, updateHotspot, setPendingHotspot, setMode } = useEditorStore()
+
+  // Edit mode: pendingHotspot has a real DB _id (24-char hex), not a temp hs_* id
+  const isEditing = !!pendingHotspot?._id && /^[0-9a-f]{24}$/i.test(pendingHotspot._id)
 
   const [label,         setLabel]         = useState('')
   const [targetSceneId, setTargetSceneId] = useState('')
@@ -44,12 +47,32 @@ export function HotspotForm({ onClose }: HotspotFormProps) {
   const isNavigation = pendingHotspot?.type === 'navigation'
   const scenes: SceneDoc[] = tour?.scenes ?? []
 
+  // Pre-fill form when editing an existing hotspot
   useEffect(() => {
-    setLabel('');  setTargetSceneId(''); setTitle('')
-    setText('');   setLink('');          setColor(isNavigation ? '#60a5fa' : '#34d399')
-    setHasSensor(false); setSensorType('temperature'); setSensorValue('')
-    setSensorUnit('°C'); setSensorStatus('normal')
-  }, [pendingHotspot?.type])
+    if (isEditing && pendingHotspot) {
+      setLabel(pendingHotspot.label ?? '')
+      setTargetSceneId(pendingHotspot.targetSceneId ?? '')
+      setTitle(pendingHotspot.content?.title ?? '')
+      setText(pendingHotspot.content?.text ?? '')
+      setLink(pendingHotspot.content?.link ?? '')
+      setColor(pendingHotspot.style?.color ?? '#34d399')
+      if (pendingHotspot.sensor?.type) {
+        setHasSensor(true)
+        setSensorType(pendingHotspot.sensor.type)
+        setSensorValue(pendingHotspot.sensor.value ?? '')
+        setSensorUnit(pendingHotspot.sensor.unit ?? '°C')
+        setSensorStatus(pendingHotspot.sensor.status ?? 'normal')
+      } else {
+        setHasSensor(false)
+      }
+    } else {
+      setLabel('');  setTargetSceneId(''); setTitle('')
+      setText('');   setLink('');          setColor(isNavigation ? '#60a5fa' : '#34d399')
+      setHasSensor(false); setSensorType('temperature'); setSensorValue('')
+      setSensorUnit('°C'); setSensorStatus('normal')
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingHotspot?._id])
 
   // Auto-fill default unit when sensor type changes
   useEffect(() => {
@@ -57,38 +80,48 @@ export function HotspotForm({ onClose }: HotspotFormProps) {
     if (meta) setSensorUnit(meta.unit)
   }, [sensorType])
 
+  function buildPatch() {
+    const base = {
+      label: label.trim() || (isNavigation ? 'Go here' : 'Info'),
+      icon:  isNavigation ? 'arrow' as const : 'info' as const,
+      style: { color },
+    }
+    if (isNavigation) {
+      return { ...base, targetSceneId: targetSceneId || undefined, targetView: { lon: 0, lat: 0 } }
+    }
+    return {
+      ...base,
+      content: {
+        title: title.trim() || undefined,
+        text:  text.trim()  || undefined,
+        link:  link.trim()  || undefined,
+      },
+      sensor: hasSensor ? {
+        type:   sensorType,
+        value:  sensorValue.trim() || undefined,
+        unit:   sensorUnit.trim()  || undefined,
+        status: sensorStatus,
+      } : undefined,
+    }
+  }
+
   function handleSave() {
     if (!pendingHotspot?.position) return
+    const patch = buildPatch()
 
-    const newHotspot: HotspotDoc = {
-      _id:      `hs_${Date.now()}`,
-      sceneId:  pendingHotspot.sceneId ?? '',
-      type:     pendingHotspot.type as 'navigation' | 'info',
-      position: pendingHotspot.position,
-      label:    label.trim() || (isNavigation ? 'Go here' : 'Info'),
-      icon:     isNavigation ? 'arrow' : 'info',
-      style:    { color },
-      ...(isNavigation ? {
-        targetSceneId: targetSceneId || undefined,
-        targetView:    { lon: 0, lat: 0 },
-      } : {
-        content: {
-          title: title.trim() || undefined,
-          text:  text.trim()  || undefined,
-          link:  link.trim()  || undefined,
-        },
-        ...(hasSensor ? {
-          sensor: {
-            type:   sensorType,
-            value:  sensorValue.trim() || undefined,
-            unit:   sensorUnit.trim()  || undefined,
-            status: sensorStatus,
-          },
-        } : {}),
-      }),
+    if (isEditing && pendingHotspot._id) {
+      updateHotspot(pendingHotspot._id, patch)
+    } else {
+      const newHotspot: HotspotDoc = {
+        _id:      `hs_${Date.now()}`,
+        sceneId:  pendingHotspot.sceneId ?? '',
+        type:     pendingHotspot.type as 'navigation' | 'info',
+        position: pendingHotspot.position,
+        ...patch,
+      }
+      addHotspot(newHotspot)
     }
 
-    addHotspot(newHotspot)
     setPendingHotspot(null)
     setMode('view')
     onClose()
@@ -102,7 +135,10 @@ export function HotspotForm({ onClose }: HotspotFormProps) {
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-white/10 sticky top-0 bg-gray-900 z-10">
           <h3 className="text-white font-semibold text-sm">
-            {isNavigation ? 'Add Navigation Point' : 'Add Info Hotspot'}
+            {isEditing
+              ? (isNavigation ? 'Edit Navigation Point' : 'Edit Info Hotspot')
+              : (isNavigation ? 'Add Navigation Point' : 'Add Info Hotspot')
+            }
           </h3>
           <button onClick={() => { setPendingHotspot(null); setMode('view'); onClose() }}
             className="text-white/50 hover:text-white">
@@ -253,7 +289,7 @@ export function HotspotForm({ onClose }: HotspotFormProps) {
           </button>
           <button onClick={handleSave}
             className="px-4 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors">
-            Add Hotspot
+            {isEditing ? 'Save Changes' : 'Add Hotspot'}
           </button>
         </div>
       </div>

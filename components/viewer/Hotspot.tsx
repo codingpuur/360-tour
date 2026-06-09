@@ -6,7 +6,7 @@ import * as THREE from 'three'
 
 interface HotspotProps {
   hotspots: HotspotDoc[]
-  onHotspotClick: (hotspot: HotspotDoc) => void
+  onHotspotClick: (hotspot: HotspotDoc, x: number, y: number) => void
   onHotspotPointerDown?: (hotspot: HotspotDoc, event: THREE.Event) => void
   onHoverEnter?: (hotspot: HotspotDoc, x: number, y: number) => void
   onHoverLeave?: () => void

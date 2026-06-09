@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useEffect, useCallback } from 'react'
+import { useRef, useEffect, useCallback, useImperativeHandle, forwardRef } from 'react'
 import { useThree, useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { lonLatToEuler } from '@/lib/three/lonlat'
@@ -8,11 +8,15 @@ import { raycastToLonLat } from '@/lib/three/raycast'
 import { Hotspot } from './Hotspot'
 import type { SceneDoc, HotspotDoc, LonLat } from '@/types'
 
+export interface PanoSphereHandle {
+  getCurrentView: () => { lon: number; lat: number; fov: number }
+}
+
 interface PanoSphereProps {
   scene: SceneDoc
   nextScene?: SceneDoc | null
   onCrossfadeDone?: () => void
-  onHotspotClick: (hotspot: HotspotDoc) => void
+  onHotspotClick: (hotspot: HotspotDoc, x: number, y: number) => void
   onSphereClick?: (lonLat: LonLat) => void
   onHoverEnter?: (hotspot: HotspotDoc, x: number, y: number) => void
   onHoverLeave?: () => void
@@ -27,7 +31,7 @@ const DRAG_SPEED      = 0.3
 const CROSSFADE_SPEED = 1.8  // progress units per second ≈ 0.55s duration
 const FOV_DIP_DEGREES = 8    // how much FOV narrows at crossfade midpoint
 
-export function PanoSphere({
+export const PanoSphere = forwardRef<PanoSphereHandle, PanoSphereProps>(function PanoSphere({
   scene,
   nextScene,
   onCrossfadeDone,
@@ -36,7 +40,7 @@ export function PanoSphere({
   onHoverEnter,
   onHoverLeave,
   editorMode = false,
-}: PanoSphereProps) {
+}, ref) {
   const { camera, gl } = useThree()
 
   // Primary sphere (current scene)
@@ -204,7 +208,8 @@ export function PanoSphere({
     isDragging.current  = false
     pointerDown.current = { x: e.clientX, y: e.clientY }
     lastMouse.current   = { x: e.clientX, y: e.clientY }
-  }, [])
+    gl.domElement.style.cursor = 'grabbing'
+  }, [gl])
 
   const handlePointerMove = useCallback((e: PointerEvent) => {
     if (!pointerDown.current) return
@@ -228,6 +233,7 @@ export function PanoSphere({
     }
     pointerDown.current = null
     isDragging.current  = false
+    gl.domElement.style.cursor = 'grab'
   }, [editorMode, onSphereClick, camera, gl])
 
   const handleWheel = useCallback((e: WheelEvent) => {
@@ -237,17 +243,27 @@ export function PanoSphere({
 
   useEffect(() => {
     const canvas = gl.domElement
+    canvas.style.cursor = 'grab'
     canvas.addEventListener('pointerdown', handlePointerDown)
     canvas.addEventListener('pointermove', handlePointerMove)
     canvas.addEventListener('pointerup',   handlePointerUp)
     canvas.addEventListener('wheel', handleWheel, { passive: false })
     return () => {
+      canvas.style.cursor = ''
       canvas.removeEventListener('pointerdown', handlePointerDown)
       canvas.removeEventListener('pointermove', handlePointerMove)
       canvas.removeEventListener('pointerup',   handlePointerUp)
       canvas.removeEventListener('wheel', handleWheel)
     }
   }, [gl, handlePointerDown, handlePointerMove, handlePointerUp, handleWheel])
+
+  useImperativeHandle(ref, () => ({
+    getCurrentView: () => ({
+      lon: lonRef.current,
+      lat: latRef.current,
+      fov: fovRef.current,
+    }),
+  }), [])
 
   return (
     <>
@@ -278,7 +294,7 @@ export function PanoSphere({
       />
     </>
   )
-}
+})
 
 // ── Shared texture setup helper ────────────────────────────────────────────────
 function applyPanoramaTexture(

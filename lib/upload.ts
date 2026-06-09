@@ -1,12 +1,4 @@
 import sharp from 'sharp'
-import { v2 as cloudinary } from 'cloudinary'
-import { Readable } from 'stream'
-
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME!,
-  api_key:    process.env.CLOUDINARY_API_KEY!,
-  api_secret: process.env.CLOUDINARY_API_SECRET!,
-})
 
 export class UploadError extends Error {}
 
@@ -28,43 +20,21 @@ export async function uploadPanorama(
 ): Promise<{ panoramaUrl: string; previewUrl: string }> {
   await validateEquirectangular(buffer)
 
-  const previewBuffer = await sharp(buffer)
-    .resize({ width: 1024 })
-    .jpeg({ quality: 70 })
-    .toBuffer()
-
-  const folder = '360-tour-platform/panoramas'
-
-  const [panoramaResult, previewResult] = await Promise.all([
-    uploadBufferToCloudinary(buffer,        `${filename}-full`,    folder),
-    uploadBufferToCloudinary(previewBuffer, `${filename}-preview`, folder),
-  ])
-
-  return {
-    panoramaUrl: panoramaResult.secure_url,
-    previewUrl:  previewResult.secure_url,
+  if (process.env.STORAGE_PROVIDER === 'cloudinary') {
+    const { cloudinaryUploadPanorama } = await import('./storage/cloudinary')
+    return cloudinaryUploadPanorama(buffer, filename)
   }
+
+  const { localUploadPanorama } = await import('./storage/local')
+  return localUploadPanorama(buffer, filename)
 }
 
 export async function uploadFloorplan(buffer: Buffer, filename: string): Promise<string> {
-  const folder = '360-tour-platform/floorplans'
-  const result = await uploadBufferToCloudinary(buffer, filename, folder)
-  return result.secure_url
-}
+  if (process.env.STORAGE_PROVIDER === 'cloudinary') {
+    const { cloudinaryUploadFloorplan } = await import('./storage/cloudinary')
+    return cloudinaryUploadFloorplan(buffer, filename)
+  }
 
-async function uploadBufferToCloudinary(
-  buffer: Buffer,
-  publicId: string,
-  folder: string
-): Promise<{ secure_url: string }> {
-  return new Promise((resolve, reject) => {
-    const stream = cloudinary.uploader.upload_stream(
-      { public_id: publicId, folder, resource_type: 'image' },
-      (error, result) => {
-        if (error || !result) reject(error ?? new Error('No Cloudinary result'))
-        else resolve(result)
-      }
-    )
-    Readable.from(buffer).pipe(stream)
-  })
+  const { localUploadFloorplan } = await import('./storage/local')
+  return localUploadFloorplan(buffer, filename)
 }

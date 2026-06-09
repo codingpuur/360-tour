@@ -23,6 +23,10 @@ interface EditorStore {
   markSaved:         () => void
   updateScene:       (patch: Partial<SceneDoc>) => void
   updateTour:        (patch: Partial<TourDoc>) => void
+  removeScene:        (sceneId: string) => void
+  reorderScenes:      (scenes: SceneDoc[]) => void
+  renameScene:        (sceneId: string, name: string) => void
+  syncSceneHotspots:  (sceneId: string, hotspots: HotspotDoc[]) => void
 }
 
 export const useEditorStore = create<EditorStore>((set) => ({
@@ -70,5 +74,42 @@ export const useEditorStore = create<EditorStore>((set) => ({
     set(s => ({
       tour: s.tour ? { ...s.tour, ...patch } : null,
       isDirty: true,
+    })),
+
+  removeScene: (sceneId) =>
+    set(s => {
+      const scenes = s.tour ? s.tour.scenes.filter(sc => sc._id !== sceneId) : []
+      const currentScene =
+        s.currentScene?._id === sceneId ? (scenes[0] ?? null) : s.currentScene
+      return {
+        tour: s.tour ? { ...s.tour, scenes } : null,
+        currentScene,
+        hotspots: currentScene?._id === s.currentScene?._id ? s.hotspots : (currentScene?.hotspots ?? []),
+      }
+    }),
+
+  reorderScenes: (scenes) =>
+    set(s => ({
+      tour: s.tour ? { ...s.tour, scenes } : null,
+    })),
+
+  renameScene: (sceneId, name) =>
+    set(s => ({
+      tour: s.tour
+        ? { ...s.tour, scenes: s.tour.scenes.map(sc => sc._id === sceneId ? { ...sc, name } : sc) }
+        : null,
+      currentScene: s.currentScene?._id === sceneId
+        ? { ...s.currentScene, name }
+        : s.currentScene,
+    })),
+
+  // Called after bulk-save so switching scenes doesn't lose unsaved state
+  syncSceneHotspots: (sceneId, hotspots) =>
+    set(s => ({
+      hotspots:     s.currentScene?._id === sceneId ? hotspots : s.hotspots,
+      tour: s.tour
+        ? { ...s.tour, scenes: s.tour.scenes.map(sc => sc._id === sceneId ? { ...sc, hotspots } : sc) }
+        : null,
+      isDirty: false,
     })),
 }))

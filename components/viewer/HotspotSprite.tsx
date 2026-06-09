@@ -1,14 +1,14 @@
 'use client'
 
 import { useRef, useEffect } from 'react'
-import { useFrame } from '@react-three/fiber'
+import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import { lonLatToVector3 } from '@/lib/three/lonlat'
 import type { HotspotDoc, SensorType, SensorStatus } from '@/types'
 
 interface HotspotSpriteProps {
   hotspot: HotspotDoc
-  onClick: (hotspot: HotspotDoc) => void
+  onClick: (hotspot: HotspotDoc, x: number, y: number) => void
   onPointerDown?: (hotspot: HotspotDoc, event: THREE.Event) => void
   onHoverEnter?: (hotspot: HotspotDoc, x: number, y: number) => void
   onHoverLeave?: () => void
@@ -47,6 +47,7 @@ function getSpriteColor(hotspot: HotspotDoc): string {
 }
 
 export function HotspotSprite({ hotspot, onClick, onPointerDown, onHoverEnter, onHoverLeave }: HotspotSpriteProps) {
+  const { gl } = useThree()
   const baseSpriteRef    = useRef<THREE.Sprite>(null)
   const baseMatRef       = useRef<THREE.SpriteMaterial>(null)
   const chevronSpriteRef = useRef<THREE.Sprite>(null)
@@ -124,14 +125,19 @@ export function HotspotSprite({ hotspot, onClick, onPointerDown, onHoverEnter, o
         position={[position.x, position.y, position.z]}
         scale={[baseScale, baseScale, 1]}
         userData={{ hotspotId: hotspot._id }}
-        onClick={(e) => { e.stopPropagation(); onClick(hotspot) }}
+        onClick={(e) => { e.stopPropagation(); const ne = e.nativeEvent as PointerEvent; onClick(hotspot, ne.clientX, ne.clientY) }}
         onPointerDown={(e) => { e.stopPropagation(); onPointerDown?.(hotspot, e) }}
         onPointerEnter={(e) => {
           e.stopPropagation()
+          gl.domElement.style.cursor = 'pointer'
           const ne = e.nativeEvent as PointerEvent
           onHoverEnter?.(hotspot, ne.clientX, ne.clientY)
         }}
-        onPointerLeave={(e) => { e.stopPropagation(); onHoverLeave?.() }}
+        onPointerLeave={(e) => {
+          e.stopPropagation()
+          gl.domElement.style.cursor = 'grab'
+          onHoverLeave?.()
+        }}
       >
         <spriteMaterial ref={baseMatRef} transparent depthWrite={false} color={getSpriteColor(hotspot)} sizeAttenuation />
       </sprite>
