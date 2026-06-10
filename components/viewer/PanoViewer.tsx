@@ -4,6 +4,7 @@ import { useState, useCallback, useRef } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { PanoSphere } from './PanoSphere'
 import { SceneRail } from './SceneRail'
+import { ArrowLeft } from 'lucide-react'
 import { Floorplan } from './Floorplan'
 import { InfoPopup } from './InfoPopup'
 import { HoverCard } from './HoverCard'
@@ -55,6 +56,7 @@ export function PanoViewer({ tour, initialSceneId }: PanoViewerProps) {
   const [activePopup,    setActivePopup]     = useState<HotspotDoc | null>(null)
   const [hoveredHotspot, setHoveredHotspot]  = useState<HotspotDoc | null>(null)
   const [hoverPos,       setHoverPos]        = useState({ x: 0, y: 0 })
+  const [history,        setHistory]         = useState<string[]>([])
 
   const nextSceneRef    = useRef<SceneDoc | null>(null)
   const isCrossfadeRef  = useRef(false)
@@ -64,11 +66,12 @@ export function PanoViewer({ tour, initialSceneId }: PanoViewerProps) {
     ? TRANSITIONS['fade']  // fallback, not used for crossfade
     : TRANSITIONS[transitionKey]
 
-  const goToScene = useCallback((sceneId: string) => {
+  const navigateTo = useCallback((sceneId: string, pushHistory: boolean) => {
     const target = tour.scenes.find(s => s._id === sceneId)
     if (!target || target._id === currentScene._id) return
 
-    // Crossfade: handled entirely inside WebGL, no CSS transitions
+    if (pushHistory) setHistory(h => [...h, currentScene._id])
+
     if (transitionKey === 'crossfade') {
       if (isCrossfadeRef.current) return
       isCrossfadeRef.current = true
@@ -90,6 +93,15 @@ export function PanoViewer({ tour, initialSceneId }: PanoViewerProps) {
       setTimeout(() => setFadeState('visible'), cssTransition.duration)
     }, cssTransition.duration)
   }, [tour.scenes, currentScene._id, fadeState, transitionKey, cssTransition])
+
+  const goToScene = useCallback((sceneId: string) => navigateTo(sceneId, true),  [navigateTo])
+
+  const goBack = useCallback(() => {
+    if (history.length === 0) return
+    const prevId = history[history.length - 1]
+    setHistory(h => h.slice(0, -1))
+    navigateTo(prevId, false)
+  }, [history, navigateTo])
 
   const handleCrossfadeDone = useCallback(() => {
     setCrossfadeScene(prev => {
@@ -167,6 +179,17 @@ export function PanoViewer({ tour, initialSceneId }: PanoViewerProps) {
         currentSceneId={currentScene._id}
         onSelect={goToScene}
       />
+
+      {/* Back button — top-left, only visible when history exists */}
+      {history.length > 0 && (
+        <button
+          onClick={goBack}
+          className="absolute top-4 left-4 z-20 flex items-center gap-1.5 bg-black/60 hover:bg-black/80 text-white text-xs px-3 py-2 rounded-full transition-colors backdrop-blur-sm"
+        >
+          <ArrowLeft size={13} />
+          Back
+        </button>
+      )}
 
       {hoveredHotspot && !activePopup && (
         <HoverCard hotspot={hoveredHotspot} x={hoverPos.x} y={hoverPos.y} />

@@ -6,16 +6,21 @@ import { PanoSphere } from '@/components/viewer/PanoSphere'
 import type { PanoSphereHandle } from '@/components/viewer/PanoSphere'
 import { HotspotForm } from './HotspotForm'
 import { useEditorStore } from '@/store/editorStore'
-import { Navigation, Info, Eye, Camera, Check, X, Trash2 } from 'lucide-react'
+import { Navigation, Info, Eye, Camera, Check, X, Trash2, ArrowLeftRight } from 'lucide-react'
 import type { HotspotDoc, LonLat, SceneDoc } from '@/types'
+
+// Opposite lon: A→B hotspot ka reverse position calculate karta hai
+function oppositeLon(lon: number): number {
+  const r = lon + 180
+  return r > 180 ? r - 360 : r
+}
 
 // ── Nav hotspot floating panel ────────────────────────────────────────────────
 function NavPanel({
   hotspot,
   scenes,
   currentSceneId,
-  x,
-  y,
+  x, y,
   onSave,
   onDelete,
   onClose,
@@ -25,16 +30,16 @@ function NavPanel({
   currentSceneId: string
   x: number
   y: number
-  onSave: (label: string, targetSceneId: string) => void
+  onSave: (label: string, targetSceneId: string, autoBackLink: boolean) => void
   onDelete: () => void
   onClose: () => void
 }) {
-  const [label,    setLabel]    = useState(hotspot.label)
-  const [targetId, setTargetId] = useState(hotspot.targetSceneId ?? '')
+  const [label,        setLabel]        = useState(hotspot.label)
+  const [targetId,     setTargetId]     = useState(hotspot.targetSceneId ?? '')
+  const [autoBackLink, setAutoBackLink] = useState(true)
 
-  // Keep panel inside viewport
-  const panelW = 220
-  const panelH = 320
+  const panelW = 230
+  const panelH = 380
   const left   = Math.min(x + 12, window.innerWidth  - panelW - 8)
   const top    = Math.min(y - 40,  window.innerHeight - panelH - 8)
 
@@ -46,9 +51,7 @@ function NavPanel({
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-white/10">
         <span className="text-white text-xs font-semibold">Navigation Point</span>
-        <button onClick={onClose} className="text-gray-500 hover:text-white">
-          <X size={13} />
-        </button>
+        <button onClick={onClose} className="text-gray-500 hover:text-white"><X size={13} /></button>
       </div>
 
       {/* Label */}
@@ -63,8 +66,8 @@ function NavPanel({
 
       {/* Scene list */}
       <div className="px-3 pb-1">
-        <label className="text-gray-500 text-xs mb-1 block">Select target scene</label>
-        <div className="space-y-0.5 max-h-44 overflow-y-auto">
+        <label className="text-gray-500 text-xs mb-1 block">Target scene</label>
+        <div className="space-y-0.5 max-h-40 overflow-y-auto">
           {scenes
             .filter(s => s._id !== currentSceneId)
             .map(s => (
@@ -83,12 +86,35 @@ function NavPanel({
                     : <div className="w-full h-full bg-gray-700" />
                   }
                 </div>
-                <span className="text-white text-xs truncate">{s.name}</span>
-                {targetId === s._id && <span className="ml-auto text-blue-400 text-xs">✓</span>}
+                <span className="text-white text-xs truncate flex-1">{s.name}</span>
+                {targetId === s._id && <span className="text-blue-400 text-xs">✓</span>}
               </button>
             ))
           }
         </div>
+      </div>
+
+      {/* Auto back-link toggle */}
+      <div className="px-3 pb-2">
+        <button
+          onClick={() => setAutoBackLink(v => !v)}
+          className={`w-full flex items-center gap-2 px-2 py-2 rounded-lg border text-xs transition-colors ${
+            autoBackLink
+              ? 'bg-green-600/20 border-green-500/40 text-green-400'
+              : 'bg-gray-800 border-gray-700 text-gray-500'
+          }`}
+        >
+          <ArrowLeftRight size={12} />
+          <span className="flex-1 text-left">Auto reverse hotspot</span>
+          <div className={`w-7 h-4 rounded-full relative flex-shrink-0 transition-colors ${autoBackLink ? 'bg-green-600' : 'bg-gray-600'}`}>
+            <div className={`absolute top-0.5 w-3 h-3 bg-white rounded-full shadow transition-transform ${autoBackLink ? 'translate-x-3.5' : 'translate-x-0.5'}`} />
+          </div>
+        </button>
+        {autoBackLink && targetId && (
+          <p className="text-gray-600 text-xs mt-1 px-1">
+            Target scene mein bhi ek wapas hotspot ban jaayega
+          </p>
+        )}
       </div>
 
       {/* Footer */}
@@ -100,7 +126,7 @@ function NavPanel({
           <Trash2 size={11} /> Delete
         </button>
         <button
-          onClick={() => onSave(label, targetId)}
+          onClick={() => onSave(label, targetId, autoBackLink)}
           className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded-lg transition-colors"
         >
           Save
@@ -114,12 +140,13 @@ function NavPanel({
 export function HotspotTools() {
   const {
     mode, currentScene, setMode, setPendingHotspot, pendingHotspot,
-    hotspots, removeHotspot, setSelectedHotspot, updateScene, updateHotspot, tour,
+    hotspots, removeHotspot, setSelectedHotspot, updateScene, updateHotspot,
+    tour, syncSceneHotspots,
   } = useEditorStore()
 
-  const [showForm,   setShowForm]   = useState(false)
-  const [viewSaved,  setViewSaved]  = useState(false)
-  const [navPanel,   setNavPanel]   = useState<{ hotspot: HotspotDoc; x: number; y: number } | null>(null)
+  const [showForm,  setShowForm]  = useState(false)
+  const [viewSaved, setViewSaved] = useState(false)
+  const [navPanel,  setNavPanel]  = useState<{ hotspot: HotspotDoc; x: number; y: number } | null>(null)
   const sphereRef = useRef<PanoSphereHandle>(null)
 
   // ── Set initial view ────────────────────────────────────────────────────────
@@ -136,7 +163,7 @@ export function HotspotTools() {
     setTimeout(() => setViewSaved(false), 2000)
   }
 
-  // ── Place new hotspot on sphere click ───────────────────────────────────────
+  // ── Place new hotspot ───────────────────────────────────────────────────────
   const handleSphereClick = useCallback((lonLat: LonLat) => {
     if (!currentScene) return
     if (mode === 'place-navigation' || mode === 'place-info') {
@@ -155,7 +182,6 @@ export function HotspotTools() {
     if (hotspot.type === 'navigation') {
       setNavPanel({ hotspot, x, y })
     } else {
-      // Info hotspot → open form pre-filled for editing
       setPendingHotspot({ ...hotspot })
       setSelectedHotspot(hotspot)
       setShowForm(true)
@@ -163,13 +189,46 @@ export function HotspotTools() {
   }, [setPendingHotspot, setSelectedHotspot])
 
   // ── Nav panel save ──────────────────────────────────────────────────────────
-  function handleNavSave(label: string, targetSceneId: string) {
-    if (!navPanel) return
+  async function handleNavSave(label: string, targetSceneId: string, autoBackLink: boolean) {
+    if (!navPanel || !currentScene || !tour) return
+
+    // 1. Update this hotspot in store
     updateHotspot(navPanel.hotspot._id, { label, targetSceneId: targetSceneId || undefined })
     setNavPanel(null)
+
+    // 2. Auto back-link — add reverse hotspot in target scene
+    if (autoBackLink && targetSceneId) {
+      const targetScene = tour.scenes.find(s => s._id === targetSceneId)
+      if (!targetScene) return
+
+      const reversePos = {
+        lon: oppositeLon(navPanel.hotspot.position.lon),
+        lat: navPanel.hotspot.position.lat,
+      }
+
+      const reverseHotspot = {
+        type:          'navigation' as const,
+        position:      reversePos,
+        label:         currentScene.name,
+        targetSceneId: currentScene._id,
+        icon:          'arrow' as const,
+        style:         { color: '#60a5fa' },
+        sceneId:       targetSceneId,
+      }
+
+      const existingHotspots = targetScene.hotspots ?? []
+      const res = await fetch(`/api/scenes/${targetSceneId}/hotspots`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hotspots: [...existingHotspots, reverseHotspot] }),
+      })
+      const saved = await res.json()
+      if (Array.isArray(saved)) {
+        syncSceneHotspots(targetSceneId, saved as HotspotDoc[])
+      }
+    }
   }
 
-  // ── Nav panel delete ────────────────────────────────────────────────────────
   function handleNavDelete() {
     if (!navPanel) return
     removeHotspot(navPanel.hotspot._id)
@@ -214,13 +273,10 @@ export function HotspotTools() {
         >
           <Info size={12} /> + Info
         </button>
-
         <div className="w-px h-4 bg-white/10 mx-1" />
-
         <button
           onClick={handleSetInitialView}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium text-gray-400 hover:text-white transition-colors"
-          title="Current view ko initial view set karo"
         >
           {viewSaved
             ? <><Check size={12} className="text-green-400" /><span className="text-green-400">Saved!</span></>
@@ -236,7 +292,6 @@ export function HotspotTools() {
         </div>
       )}
 
-      {/* Canvas */}
       <Canvas
         camera={{ fov: currentScene.initialView.fov, near: 0.1, far: 1100 }}
         style={{ width: '100%', height: '100%' }}
@@ -250,7 +305,6 @@ export function HotspotTools() {
         />
       </Canvas>
 
-      {/* Nav hotspot floating panel */}
       {navPanel && tour && (
         <NavPanel
           hotspot={navPanel.hotspot}
@@ -264,7 +318,6 @@ export function HotspotTools() {
         />
       )}
 
-      {/* Hotspot form (add new OR edit info hotspot) */}
       {showForm && pendingHotspot && (
         <HotspotForm onClose={() => { setShowForm(false); setSelectedHotspot(null) }} />
       )}
